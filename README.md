@@ -14,7 +14,7 @@ _Вспомогательный бэкенд-сервис для генерац�
 
 ---
 
-### 🔗 **https://zass.ro/other-pages/centre-service.html(https://cinema-ai-service.onrender.com)**
+### 🔗 **https://cinema-ai-service.onrender.com**
 
 ---
 
