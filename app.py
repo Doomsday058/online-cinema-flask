@@ -11,6 +11,9 @@ import json
 load_dotenv()
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
+TMDB_API_KEY = os.getenv("TMDB_API_KEY")
+NODE_API_URL = os.getenv("NODE_API_URL")
+
 
 app = Flask(__name__)
 CORS(app)
@@ -36,11 +39,10 @@ def generate_review(tmdb_id):
         if content_type not in ["movie", "serial"]:
             return jsonify({"error": "Invalid content type"}), 400
 
-        # Получаем детали фильма/сериала
         if content_type == "movie":
-            response = requests.get(f"http://localhost:8000/api/movies/{tmdb_id}")
+            response = requests.get(f"{NODE_API_URL}/api/movies/{tmdb_id}")
         else:
-            response = requests.get(f"http://localhost:8000/api/series/{tmdb_id}")
+            response = requests.get(f"{NODE_API_URL}/api/series/{tmdb_id}")
 
         if not response.ok:
             return jsonify({"error": "Failed to fetch content details"}), 500
@@ -54,8 +56,6 @@ def generate_review(tmdb_id):
         runtime = data.get('runtime') or (data.get('episode_run_time')[0] if data.get('episode_run_time') else '')
         rating = data.get('vote_average', 0.0)
 
-        # Определяем тон обзора в зависимости от рейтинга
-        # Если рейтинг ниже 7, обзор более критичный; иначе — более позитивный.
         if rating < 7:
             tone_instruction = (
                 "Фильм получил не очень высокую оценку, поэтому будь более критичен. "
@@ -82,7 +82,6 @@ def generate_review(tmdb_id):
             "Напиши обзор."
         )
 
-        # Запрос к OpenAI API
         completion = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[
@@ -180,7 +179,7 @@ def advanced_search():
             first_actor = actors[0]
             # Поиск актёра по имени
             person_resp = requests.get("https://api.themoviedb.org/3/search/person", params={
-                "api_key": "528c80973bb4c5dbe8ad88e678ececf6",
+                "api_key": TMDB_API_KEY,
                 "language": "ru-RU",
                 "query": first_actor
             })
@@ -213,7 +212,7 @@ def advanced_search():
 
         print("Final TMDb search params:", search_params)
 
-        response = requests.get("http://localhost:8000/api/discover/movie", params=search_params)
+        response = requests.get(f"{NODE_API_URL}/api/discover/movie", params=search_params)
         if not response.ok:
             print("TMDb discover error:", response.text)
             return jsonify({"error": "Failed to fetch movies from TMDb"}), 500

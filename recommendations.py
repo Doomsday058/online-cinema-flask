@@ -9,12 +9,12 @@ from functools import lru_cache
 # Загружаем переменные окружения из файла .env
 load_dotenv()
 
-# Безопасно получаем ключ TMDB из переменных окружения
 API_KEY = os.getenv("TMDB_API_KEY")
+NODE_API_URL = os.getenv("NODE_API_URL")
 
 def get_user_favorites(user_id):
     """Получаем избранные фильмы и сериалы пользователя через API."""
-    url = f"http://localhost:8000/api/favorites/{user_id}"
+    url = f"{NODE_API_URL}/api/favorites/{user_id}"
     response = requests.get(url)
     favorites = response.json()
     # Преобразуем данные в нужный формат
