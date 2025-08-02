@@ -23,6 +23,9 @@ cors = CORS(app, resources={
     },
     r"/recommendations/*": {
         "origins": "https://doomsday058.github.io"
+    },
+    r"/*": { # Разрешаем все маршруты
+        "origins": "https://doomsday058.github.io"
     }
 })
 
