@@ -15,19 +15,7 @@ TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 NODE_API_URL = os.getenv("NODE_API_URL")
 
 app = Flask(__name__)
-
-# Настраиваем CORS, чтобы разрешить запросы ТОЛЬКО от твоего фронтенда
-cors = CORS(app, resources={
-    r"/generate_review/*": {
-        "origins": "https://doomsday058.github.io"
-    },
-    r"/recommendations/*": {
-        "origins": "https://doomsday058.github.io"
-    },
-    r"/*": { # Разрешаем все маршруты
-        "origins": "https://doomsday058.github.io"
-    }
-})
+cors = CORS(app, origins=["https://doomsday058.github.io"], supports_credentials=True)
 
 @app.route("/recommendations/<int:user_id>", methods=["GET"])
 def recommendations(user_id):
