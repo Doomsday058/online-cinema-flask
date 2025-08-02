@@ -200,7 +200,7 @@ def advanced_search():
 
         # Пока уберём `with_cast` и `with_genres`, так как нет маппинга
         search_params = {
-            "api_key": "528c80973bb4c5dbe8ad88e678ececf6",
+            "api_key": TMDB_API_KEY,
             "language": "ru-RU",
             "sort_by": "popularity.desc",
             "include_adult": False,
