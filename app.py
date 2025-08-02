@@ -16,7 +16,6 @@ NODE_API_URL = os.getenv("NODE_API_URL")
 
 app = Flask(__name__)
 
-# Настраиваем CORS, чтобы разрешить запросы ТОЛЬКО от твоего фронтенда
 cors = CORS(app, resources={
     r"/generate_review/*": {
         "origins": "https://doomsday058.github.io"
