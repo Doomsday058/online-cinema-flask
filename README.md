@@ -4,7 +4,7 @@
 
 **Интеллектуальный движок рекомендаций и семантического поиска для онлайн-кинотеатра.**
 <br>
-*Часть экосистемы [Cinema Platform](https://github.com/Doomsday058/online-cinema-frontend)*
+*Часть экосистемы [Online Cinema Platform](https://github.com/Doomsday058/online-cinema-frontend)*
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
