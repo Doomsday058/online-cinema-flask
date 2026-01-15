@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 NODE_API_URL = os.getenv("NODE_API_URL")
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
-я
 WEIGHTS = {
     "genre": 5,
     "actor": 3,
