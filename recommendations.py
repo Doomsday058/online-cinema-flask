@@ -1,166 +1,151 @@
-# recommendations.py
-
 import os
-from dotenv import load_dotenv
-import requests
+import logging
+from typing import List, Dict, Any, Set
 from collections import Counter
 from functools import lru_cache
 
-# Загружаем переменные окружения из файла .env
+import requests
+from dotenv import load_dotenv
+
 load_dotenv()
 
-API_KEY = os.getenv("TMDB_API_KEY")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 NODE_API_URL = os.getenv("NODE_API_URL")
+TMDB_BASE_URL = "https://api.themoviedb.org/3"
+я
+WEIGHTS = {
+    "genre": 5,
+    "actor": 3,
+    "director": 2
+}
 
-def get_user_favorites(user_id):
-    """Получаем избранные фильмы и сериалы пользователя через API."""
-    url = f"{NODE_API_URL}/api/favorites/{user_id}"
-    response = requests.get(url)
-    favorites = response.json()
-    # Преобразуем данные в нужный формат
-    return [{"tmdbId": fav['tmdbId'], "type": fav['type']} for fav in favorites]
+session = requests.Session()
 
-@lru_cache(maxsize=None)
-def fetch_details_and_credits(tmdb_id, content_type):
-    """Получаем детали и кредиты (актеры и режиссеры) с TMDb."""
-    if content_type == 'movie':
-        url = f"https://api.themoviedb.org/3/movie/{tmdb_id}"
-    else:
-        url = f"https://api.themoviedb.org/3/tv/{tmdb_id}"
+def get_headers() -> Dict[str, str]:
+    return {"Authorization": f"Bearer {TMDB_API_KEY}"} if not TMDB_API_KEY else {}
 
+def get_user_favorites(user_id: int) -> List[Dict[str, Any]]:
+    """Fetch user favorites from the internal Node.js API."""
+    try:
+        response = session.get(f"{NODE_API_URL}/api/favorites/{user_id}", timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        return [{"tmdbId": item['tmdbId'], "type": item['type']} for item in data]
+    except requests.RequestException as e:
+        logger.error(f"Failed to fetch favorites for user {user_id}: {e}")
+        return []
+
+@lru_cache(maxsize=128)
+def fetch_tmdb_details(tmdb_id: int, content_type: str) -> Dict[str, Any]:
+    """Fetch detailed info including credits. Cached to prevent redundant calls."""
+    endpoint = "movie" if content_type == 'movie' else "tv"
+    url = f"{TMDB_BASE_URL}/{endpoint}/{tmdb_id}"
+    
     params = {
-        "api_key": API_KEY,
+        "api_key": TMDB_API_KEY,
         "language": "ru-RU",
         "append_to_response": "credits"
     }
-    response = requests.get(url, params=params)
-    return response.json()
+    
+    try:
+        response = session.get(url, params=params, timeout=3)
+        return response.json() if response.ok else {}
+    except requests.RequestException:
+        return {}
 
-def generate_recommendations(user_id):
-    """Основной алгоритм генерации рекомендаций."""
-    favorites = get_user_favorites(user_id)
-    genre_weights = Counter()
-    actor_weights = Counter()
-    director_weights = Counter()
+def build_user_profile(favorites: List[Dict[str, Any]]) -> tuple[Counter, Counter, Counter]:
+    """Analyze favorites to build preference vectors."""
+    genres = Counter()
+    actors = Counter()
+    directors = Counter()
 
-    # 1. Анализ избранного
-    for favorite in favorites:
-        data = fetch_details_and_credits(favorite["tmdbId"], favorite["type"])
+    for fav in favorites:
+        data = fetch_tmdb_details(fav["tmdbId"], fav["type"])
+        if not data:
+            continue
 
-        # Увеличиваем веса жанров
-        genres = data.get("genres", [])
-        for genre in genres:
-            genre_weights[genre["id"]] += 5  # Увеличиваем вес жанра
+        for genre in data.get("genres", []):
+            genres[genre["id"]] += WEIGHTS["genre"]
 
-        # Увеличиваем веса актеров
         credits = data.get("credits", {})
-        for actor in credits.get("cast", [])[:5]:  # Только топ-5 актеров
-            actor_weights[actor["id"]] += 3
-
-        # Увеличиваем веса режиссеров
-        for crew_member in credits.get("crew", []):
-            if crew_member["job"] == "Director":
-                director_weights[crew_member["id"]] += 2
-
-    # 2. Поиск рекомендаций
-    recommended_items = []
-
-    # Получаем рекомендации для фильмов
-    movie_recommendations = fetch_recommendations('movie')
-    recommended_items.extend(movie_recommendations)
-
-    # Получаем рекомендации для сериалов
-    tv_recommendations = fetch_recommendations('tv')
-    recommended_items.extend(tv_recommendations)
-
-    # Исключаем избранное
-    favorite_ids = set((fav["tmdbId"], fav["type"]) for fav in favorites)
-    recommended_items = [
-        item for item in recommended_items
-        if (item["id"], 'movie' if item["media_type"] == 'movie' else 'serial') not in favorite_ids
-    ]
-
-    # Фильтруем уникальные элементы
-    unique_recommendations = {}
-    for item in recommended_items:
-        key = (item["id"], item["media_type"])
-        if key not in unique_recommendations:
-            unique_recommendations[key] = item
-
-    # Преобразуем обратно в список
-    recommended_items = list(unique_recommendations.values())
-
-    # 3. Ранжирование
-    recommendations = []
-    for item in recommended_items:
-        score = 0
-        data = fetch_details_and_credits(item["id"], item["media_type"])
-
-        # Учитываем жанры
-        genres = data.get("genres", [])
-        for genre in genres:
-            score += genre_weights[genre["id"]]
-
-        # Учитываем актеров
-        credits = data.get("credits", {})
+        
         for actor in credits.get("cast", [])[:5]:
-            score += actor_weights[actor["id"]]
+            actors[actor["id"]] += WEIGHTS["actor"]
 
-        # Учитываем режиссеров
-        for crew_member in credits.get("crew", []):
-            if crew_member["job"] == "Director":
-                score += director_weights[crew_member["id"]]
+        for crew in credits.get("crew", []):
+            if crew["job"] == "Director":
+                directors[crew["id"]] += WEIGHTS["director"]
 
-        recommendations.append({**item, "score": score})
+    return genres, actors, directors
 
-    # Сортируем по оценке
-    recommendations.sort(key=lambda x: x["score"], reverse=True)
-
-    # Получаем первые несколько десятков фильмов и сериалов с наивысшим баллом
-    top_recommendations = recommendations[:20]
-
-    # Добавляем оставшиеся из популярных фильмов и сериалов
-    remaining_items = [item for item in recommended_items if item not in top_recommendations]
-    remaining_items.sort(key=lambda x: x.get('popularity', 0), reverse=True)
-
-    # Объединяем списки
-    final_recommendations = top_recommendations + remaining_items[:20]  # Итоговый список из 50 рекомендаций
-
-    return final_recommendations
-
-def fetch_recommendations(content_type, total_pages=5):
-    """Получаем рекомендации через API Discover с несколькими страницами."""
-    if content_type == 'movie':
-        url = "https://api.themoviedb.org/3/discover/movie"
-        media_type = 'movie'
-    else:
-        url = "https://api.themoviedb.org/3/discover/tv"
-        media_type = 'tv'
-
-    all_results = []
-    for page in range(1, total_pages + 1):
-        response = requests.get(url, params={
-            "api_key": API_KEY,
+def fetch_candidates(content_type: str, pages: int = 3) -> List[Dict[str, Any]]:
+    """Fetch popular items from TMDB to form a candidate pool."""
+    endpoint = "movie" if content_type == 'movie' else "tv"
+    url = f"{TMDB_BASE_URL}/discover/{endpoint}"
+    
+    candidates = []
+    for page in range(1, pages + 1):
+        params = {
+            "api_key": TMDB_API_KEY,
             "language": "ru-RU",
             "sort_by": "popularity.desc",
             "vote_average.gte": 5,
             "vote_count.gte": 100,
-            "with_original_language": "en",
             "page": page
-        })
-        if response.ok:
-            results = response.json().get("results", [])
-            for item in results:
-                item["media_type"] = media_type
-            all_results.extend(results)
+        }
+        try:
+            resp = session.get(url, params=params, timeout=3)
+            if resp.ok:
+                results = resp.json().get("results", [])
+                for item in results:
+                    item["media_type"] = content_type
+                candidates.extend(results)
+        except requests.RequestException:
+            continue
+            
+    return candidates
 
-    # Убираем дубли на уровне fetch_recommendations
-    unique_items = {f"{item['id']}_{item['media_type']}": item for item in all_results}
-    return list(unique_items.values())
+def calculate_score(item: Dict[str, Any], profile_genres: Counter) -> int:
+    """
+    Lightweight scoring based on data available in the list view (genres).
+    Avoiding detailed fetch for every candidate to improve performance.
+    """
+    score = 0
+    for genre_id in item.get("genre_ids", []):
+        if genre_id in profile_genres:
+            score += profile_genres[genre_id]
+            
+    score += int(item.get("popularity", 0) / 10)
+    return score
+
+def generate_recommendations(user_id: int) -> List[Dict[str, Any]]:
+    favorites = get_user_favorites(user_id)
+    if not favorites:
+        return []
+
+    profile_genres, profile_actors, profile_directors = build_user_profile(favorites)
+    
+    candidates = fetch_candidates('movie') + fetch_candidates('tv')
+    
+    fav_ids = {(f["tmdbId"], f["type"]) for f in favorites}
+    candidates = [c for c in candidates if (c["id"], c["media_type"]) not in fav_ids]
+    unique_candidates = {f"{c['id']}_{c['media_type']}": c for c in candidates}.values()
+
+
+    scored_items = []
+    for item in unique_candidates:
+        item["score"] = calculate_score(item, profile_genres)
+        scored_items.append(item)
+
+    scored_items.sort(key=lambda x: x["score"], reverse=True)
+
+    return scored_items[:20]
 
 if __name__ == "__main__":
-    user_id = 1  # Идентификатор пользователя
-    recommendations = generate_recommendations(user_id)
-    for rec in recommendations:
-        title = rec.get('title') or rec.get('name')
-        print(f"{title} (score: {rec['score']})")
+    recs = generate_recommendations(user_id=1)
+    for i, r in enumerate(recs, 1):
+        title = r.get('title') or r.get('name')
+        print(f"{i}. {title} (Score: {r['score']})")
